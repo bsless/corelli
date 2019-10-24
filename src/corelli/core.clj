@@ -5,7 +5,7 @@
 
 (defn kw->fn
   [kw]
-  (resolve (symbol kw)))
+  (when kw (resolve (symbol kw))))
 
 (defn produce
   "Puts the contents repeatedly calling f into the supplied channel.
