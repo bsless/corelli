@@ -119,6 +119,15 @@
   (s/keys :req [::name ::from ::xf]
           :opt [::jobs]))
 
+(def node-specs
+  [::mult
+   ::pipe
+   ::pipeline
+   ::pipeline-blocking
+   ::pipeline-async
+   ::producer
+   ::consumer])
+
 (s/def ::unbuffered-channel
   (s/keys :req [::name]
           :opt [::size]))
@@ -131,47 +140,82 @@
   (s/keys :req [::name ::buffn ::size]
           :opt [::buffn-args]))
 
-
 (s/def ::buffered-xf-channel
   (s/keys :req [::name ::buffn ::size ::xf]
           :opt [::buffn-args ::ex-handler]))
 
+(def channel-specs
+  [::unbuffered-channel
+   ::xf-channel
+   ::buffered-channel
+   ::buffered-xf-channel])
+
+(defn- explain-specs-data
+  [v specs]
+  (let [explanations (map #(s/explain-data % v) specs)]
+    (zipmap specs explanations)))
+
+(defn- explain-specs-str
+  [v specs]
+  (let [explanations (map #(s/explain-str % v) specs)]
+    (zipmap specs explanations)))
+
+(defn- one-of-specs?
+  "Checks v satisfies one of specs.
+  Returns nil and reports result if not
+
+  Workaround for lacking `or` types in spec.alpha.
+  waiting for spec2"
+  [v specs]
+  (some #(if (s/valid? % v) %) specs))
 
 (defn compile-channel
   [m]
-  (let [buffer (kw->fn (get m ::buffn))
-        size (get m ::size)
-        args (get m ::buffn-args [])
-        xf (get m ::xf)
-        exh (get m ::ex-handler)]
-    (cond
-      (s/valid? ::buffered-xf-channel m)
-      (a/chan (apply buffer size args) xf exh)
-      (s/valid? ::buffered-channel m)
-      (a/chan (apply buffer size args))
-      (s/valid? ::unbuffered-channel m)
-      (a/chan size))))
+  (if-let [spec (one-of-specs? m channel-specs)]
+    (let [buffer (kw->fn (get m ::buffn))
+          size (get m ::size) ;; (chan nil) == (chan)
+          args (get m ::buffn-args [])
+          xf (kw->fn (get m ::xf))
+          exh (kw->fn (get m ::ex-handler))]
+      (case spec
+        ::buffered-xf-channel (a/chan (apply buffer size args) xf exh)
+        ::buffered-channel (a/chan (apply buffer size args))
+        ::unbuffered-channel (a/chan size)))
+    (throw (new Exception "channel does not match any spec."))))
+
+(defn explain-channel
+  [m]
+  (doseq [[k s] (explain-specs-str m channel-specs)
+          :let [o (str k " failed:\n" s)]]
+    (println o)))
 
 (defn compile-node
   [node edges]
-  (let [from (get edges (get node ::from))
-        to (get edges (get node ::to))
-        xf (get node ::xf)
-        close? (get node ::close? true)
-        n (get node ::jobs 1)]
-    (cond
-      (s/valid? ::pipe node) (a/pipe from to close?)
-      (s/valid? ::pipeline node) (a/pipeline n to xf from close?)
-      (s/valid? ::pipeline-async node) (a/pipeline-async n to xf from close?)
-      (s/valid? ::pipeline-blocking node) (a/pipeline-blocking n to xf from close?)
-      (s/valid? ::producer node) (produce to xf close?)
-      (s/valid? ::consumer node) (consume from xf)
-      (s/valid? ::mult node)
-      (let [m (a/mult from)]
-        (doseq [k (get node ::to+)]
-          (when-let [ch (get edges k)]
-            (a/tap m ch close?)))
-        m))))
+  (if-let [spec (one-of-specs? node node-specs)]
+    (let [from (get edges (get node ::from))
+          to (get edges (get node ::to))
+          xf (kw->fn (get node ::xf))
+          close? (get node ::close? true)
+          n (get node ::jobs 1)]
+      (case spec
+        ::pipe (a/pipe from to close?)
+        ::pipeline (a/pipeline n to xf from close?)
+        ::pipeline-async (a/pipeline-async n to xf from close?)
+        ::pipeline-blocking (a/pipeline-blocking n to xf from close?)
+        ::producer (produce to xf close?)
+        ::consumer (consume from xf)
+        ::mult (let [m (a/mult from)]
+                 (doseq [k (get node ::to+)]
+                   (when-let [ch (get edges k)]
+                     (a/tap m ch close?)))
+                 m)))
+    (throw (new Exception "node does not match any spec."))))
+
+(defn explain-node
+  [m]
+  (doseq [[k s] (explain-specs-str m node-specs)
+          :let [o (str k " failed:\n" s)]]
+    (println o)))
 
 (defn compile-topology
   [edges nodes]
