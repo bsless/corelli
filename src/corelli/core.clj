@@ -25,6 +25,35 @@
        (when close?
          (a/close! ch))))))
 
+(defn produce-blocking
+  "Like `produce` but blocking in a thread."
+  ([ch f] (produce ch f true))
+  ([ch f close?]
+   (a/thread
+     (loop [v (f)]
+       (if (and v (a/>!! ch v))
+         (recur (f))
+         (when close?
+           (a/close! ch)))))))
+
+(defn produce-bound-blocking
+  "Like `produce-blocking`, but calls `pre` and `post` in the context
+  of the thread.
+  The value returned by `pre` is passed to `f` and `post`.
+  `pre` is called before the loop, `post` after it exhausts.
+
+  Useful for non thread safe objects which throw upon being accessed from
+  different threads."
+  [ch f close? pre post]
+   (a/thread
+     (let [pv (pre)]
+       (loop [v (f pv)]
+         (if (and v (a/>!! ch v))
+           (recur (f pv))
+           (when close?
+             (a/close! ch))))
+       (post pv))))
+
 (defn consume
   "Takes values repeatedly from channels and applies f to them.
 
@@ -36,6 +65,47 @@
     (when v
       (f v)
       (recur (a/<! ch)))))
+
+(defn consume?
+  "Takes values repeatedly from channels and applies f to them.
+  Recurs only when f returns a non false-y value.
+
+  The opposite of produce.
+
+  Stops consuming values when the channel is closed."
+  [ch f]
+  (a/go-loop [v (a/<! ch)]
+    (when v
+      (when (f v)
+        (recur (a/<! ch))))))
+
+(defn consume-blocking
+  "Takes values repeatedly from channels and applies f to them.
+
+  The opposite of produce.
+
+  Stops consuming values when the channel is closed."
+  [ch f]
+  (a/thread
+    (loop [v (a/<!! ch)]
+      (when v
+        (f v)
+        (recur (a/<!! ch))))))
+
+(defn consume-blocking?
+  "Takes values repeatedly from channels and applies f to them.
+  Recurs only when f returns a non false-y value.
+
+  The opposite of produce.
+
+  Stops consuming values when the channel is closed."
+  [ch f]
+  (a/thread
+    (loop [v (a/<!! ch)]
+      (when v
+        (when (f v)
+          (recur (a/<!! ch)))))))
+
 
 (defn split*
   "Takes a channel, function f :: v -> k and a map of keys to channels k -> ch,
