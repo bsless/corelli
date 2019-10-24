@@ -37,6 +37,38 @@
       (f v)
       (recur (a/<! ch)))))
 
+(defn split*
+  "Takes a channel, function f :: v -> k and a map of keys to channels k -> ch,
+  routing the values v from the input channel to the channel such that
+  (f v) -> ch.
+
+  (get m (f v)) must be non-nil for every v! "
+  ([f ch m]
+   (a/go-loop []
+     (let [v (a/<! ch)]
+       (if (nil? v)
+         (doseq [c (vals m)] (a/close! c))
+         (if-let [o (get m (f v))]
+           (when (a/>! o v)
+             (recur))
+           (throw (Exception. "Channel does not exist"))))))))
+
+(defn split-maybe
+  "Takes a channel, function f :: v -> k and a map of keys to channels k -> ch,
+  routing the values v from the input channel to the channel such that
+  (f v) -> ch.
+
+  If (f v) is not in m, the value is dropped"
+  ([f ch m]
+   (a/go-loop []
+     (let [v (a/<! ch)]
+       (if (nil? v)
+         (doseq [c (vals m)] (a/close! c))
+         (if-let [o (get m (f v))]
+           (when (a/>! o v)
+             (recur))
+           (recur)))))))
+
 (defn kfn? [kw] (ifn? (kw->fn kw)))
 
 (s/def ::from keyword?)
