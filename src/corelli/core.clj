@@ -1,7 +1,8 @@
 (ns corelli.core
   (:require
    [clojure.spec.alpha :as s]
-   [clojure.core.async :as a]))
+   [clojure.core.async :as a]
+   [clojure.data]))
 
 (defn kw->fn
   [kw]
@@ -299,3 +300,77 @@
          (fn [m n]
            (assoc m (::name n) (compile-node n))))]
     {:edges edges :nodes nodes}))
+
+;;; Validation
+
+(defn valid-edge?
+  [edge]
+  (when [spec (one-of-specs? edge channel-specs)]
+    (assoc edge :spec spec)))
+
+(defn valid-edges?
+  [edges]
+  (let [edges (map valid-edge? edges)]
+    (if (every? some? edges)
+      edges)))
+
+(defn valid-node?
+  [node]
+  (when [spec (one-of-specs? node node-specs)]
+    (assoc node :spec spec)))
+
+(defn valid-nodes?
+  [nodes]
+  (let [nodes (map valid-node? nodes)]
+    (if (every? some? nodes)
+      nodes)))
+
+(defn name-collisions?
+  [ms]
+  (let [collided
+        (->>
+         (group-by ::name ms)
+         (filter (fn [[k g]] (< 1 (count g))) )
+         (into {}))]
+    (when (not= collided {})
+      collided)))
+
+
+(defn analyze-connectivity
+  "Checks nodes and edges specs for dangling edges and disconnected nodes"
+  [nodes edges]
+  (let [g (group-by ::name edges)
+        edges-names (set (keys g))
+        connected
+        (set
+         (remove
+          nil?
+          (concat (map ::from nodes)
+                  (map ::to nodes))))
+        [dangling-edges disconnected-nodes ok]
+        (clojure.data/diff edges-names connected)]
+    {:dangling dangling-edges
+     :disconnected disconnected-nodes}))
+
+(defn report-dangling
+  [dangling edges]
+  (let [es (vals (select-keys (group-by ::name edges) dangling))
+        s (str "The following edges are dangling:\n"
+               (with-out-str (clojure.pprint/pprint es)))]
+    (println s)))
+
+(defn report-disconnected
+  [diconnected nodes]
+  (let [to (vals (select-keys (group-by ::to nodes) diconnected))
+        from (vals (select-keys (group-by ::from nodes) diconnected))
+        s (str "The following nodes are disconnected:\n"
+               (when (seq from)
+                 (str "No ::from channel:\n"
+                      (with-out-str (clojure.pprint/pprint from))))
+               (when (seq to)
+                 (str "No ::to channel:\n"
+                      (with-out-str (clojure.pprint/pprint to)))))]
+    (println s)))
+
+(defn valid-connectivity?
+  [edges nodes])
