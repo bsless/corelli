@@ -294,18 +294,21 @@
         (reduce
          (fn [m e]
            (assoc m (::name e) (compile-channel e)))
+         {}
          edges)
         nodes
         (reduce
          (fn [m n]
-           (assoc m (::name n) (compile-node n))))]
+           (assoc m (::name n) (compile-node n edges)))
+         {}
+         nodes)]
     {:edges edges :nodes nodes}))
 
 ;;; Validation
 
 (defn valid-edge?
   [edge]
-  (when [spec (one-of-specs? edge channel-specs)]
+  (when-let [spec (one-of-specs? edge channel-specs)]
     (assoc edge :spec spec)))
 
 (defn valid-edges?
@@ -316,7 +319,7 @@
 
 (defn valid-node?
   [node]
-  (when [spec (one-of-specs? node node-specs)]
+  (when-let [spec (one-of-specs? node node-specs)]
     (assoc node :spec spec)))
 
 (defn valid-nodes?
