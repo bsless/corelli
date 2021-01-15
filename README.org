@@ -1,6 +1,6 @@
 * Corelli
 
-  [[https:en.wikipedia.org/wiki/Arcangelo_Corelli][Arcangelo Corelli]]:
+  [[https://en.wikipedia.org/wiki/Arcangelo_Corelli][Arcangelo Corelli]]:
   
   #+begin_quote
   Arcangelo Corelli was an Italian violinist and composer of the Baroque era. 
