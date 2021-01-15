@@ -140,27 +140,15 @@
                       :worker.type/pipeline
                       :worker.type/pipeline-async
                       :worker.type/pipeline-blocking
-
                       :worker.type/mult
-
-                      :worker.type/mix
-
+                      #_ :worker.type/mix
                       :worker.type/pubsub
-
-                      :worker.type/batch!
-                      :worker.type/batch!!
-
-                      :worker.type/produce!
-                      :worker.type/produce!!
-
-                      :worker.type/consume!
-                      :worker.type/consume!!
-
+                      :worker.type/batch
+                      :worker.type/produce
+                      :worker.type/consume
                       :worker.type/split
                       :worker.type/split-dropping
-
-                      :worker.type/reductions!
-                      :worker.type/reductions!!})
+                      :worker.type/reductions})
 
 (defmulti worker-type :worker/type)
 
@@ -216,6 +204,7 @@
 (s/def :batch/timeout int?)
 (s/def :batch/rf (s/and keyword? kfn?))
 (s/def :batch/init (s/and keyword? kfn?))
+(s/def :batch/async? boolean?)
 
 (s/def :worker/batch
   (s/keys :req [:batch/in
@@ -223,33 +212,25 @@
                 :batch/size
                 :batch/timeout]
           :opt [:batch/rf
-                :batch/init]))
+                :batch/init
+                :batch/async?]))
 
-(defmethod worker-type :worker.type/batch! [_]
+(defmethod worker-type :worker.type/batch [_]
   (s/keys :req [:worker/type :worker/name :worker/batch]))
 
-(defmethod compile-worker :worker.type/batch!
+(defmethod compile-worker :worker.type/batch
   [{{in :batch/in
      out :batch/out
      size :batch/size
      timeout :batch/timeout
      rf :batch/rf
      init :batch/init
+     async? :batch/async?
      :or {rf conj
           init (constantly [])}} :worker/batch}]
-  (ma/batch! in out size timeout rf init))
-
-(defmethod compile-worker :worker.type/batch!!
-  [{{in :batch/in
-     out :batch/out
-     size :batch/size
-     timeout :batch/timeout
-     rf :batch/rf
-     init :batch/init
-     :or {rf conj
-          init (constantly [])}} :worker/batch}]
-  (a/thread
-    (ma/batch!! in out size timeout rf init)))
+  (if async?
+    (ma/batch! in out size timeout rf init)
+    (a/thread (ma/batch!! in out size timeout rf init))))
 
 ;;; MULT
 
