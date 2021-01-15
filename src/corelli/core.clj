@@ -261,10 +261,39 @@
 
 (defmethod compile-worker :worker.type/mult
   [{{from :mult/from
-     to :mult/to} :mult/batch}]
+     to :mult/to} :worker/mult}]
   (let [mult (a/mult from)]
     (doseq [ch to]
       (a/tap mult ch))))
+
+;;; TODO :worker.type/mix
+
+(s/def :pubsub/pub :chan/name)
+(s/def :sub/topic any?)
+(s/def :sub/chan :chan/name)
+(s/def :pubsub/sub (s/+ (s/keys :req [:sub/topic :sub/chan])))
+(s/def :pubsub/topic-fn (s/or :fn fn? :kfn (s/and keyword? kfn?)))
+
+(s/def :worker/pubsub
+  (s/keys :req [:pubsub/pub :pubsub/sub :pubsub/topic-fn]))
+
+(defmethod worker-type :worker.type/pubsub [_]
+  (s/keys :req [:worker/type :worker/name :worker/pubsub]))
+
+(defmethod compile-worker :worker.type/pubsub
+  [{{pub :pubsub/pub
+     sub :pubsub/sub
+     tf  :pubsub/topic-fn} :worker/pubsub}]
+  (let [p (a/pub pub tf)]
+    (doseq [{:keys [:sub/topic :sub/chan]} sub]
+      (a/sub p topic chan))))
+
+;;; TODO :worker.type/produce!
+;;; TODO :worker.type/consume!
+;;; TODO :worker.type/checked-consume!
+;;; TODO :worker.type/split
+;;; TODO :worker.type/dropping-slit
+;;; TODO :worker.type/reductions!
 
 (comment
   (s/def ::from keyword?)
