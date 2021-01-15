@@ -152,7 +152,7 @@
 
 (defmulti worker-type :worker/type)
 
-(defmulti compile-worker :worker/type)
+(defmulti compile-worker (fn [worker _env] (get worker :worker/type)))
 
 ;;; PIPELINE
 
@@ -173,8 +173,8 @@
   [{{to :pipeline/to
      from :pipeline/from
      size :pipeline/size
-     xf :pipeline/xf} :worker/pipeline}]
-  (a/pipeline size to xf from))
+     xf :pipeline/xf} :worker/pipeline} env]
+  (a/pipeline size (env to) xf (env from)))
 
 (defmethod worker-type :worker.type/pipeline-blocking [_]
   (s/keys :req [:worker/type :worker/name :worker/pipeline]))
@@ -183,8 +183,8 @@
   [{{to :pipeline/to
      from :pipeline/from
      size :pipeline/size
-     xf :pipeline/xf} :worker/pipeline}]
-  (a/pipeline-blocking size to xf from))
+     xf :pipeline/xf} :worker/pipeline} env]
+  (a/pipeline-blocking size (env to) xf (env from)))
 
 (defmethod worker-type :worker.type/pipeline-async [_]
   (s/keys :req [:worker/type :worker/name :worker/pipeline]))
@@ -193,8 +193,8 @@
   [{{to :pipeline/to
      from :pipeline/from
      size :pipeline/size
-     af :pipeline/xf} :worker/pipeline}]
-  (a/pipeline-async size to af from))
+     af :pipeline/xf} :worker/pipeline} env]
+  (a/pipeline-async size (env to) af (env from)))
 
 ;;; BATCH
 
@@ -227,10 +227,12 @@
      init :batch/init
      async? :batch/async?
      :or {rf conj
-          init (constantly [])}} :worker/batch}]
-  (if async?
-    (ma/batch! from to size timeout rf init)
-    (a/thread (ma/batch!! from to size timeout rf init))))
+          init (constantly [])}} :worker/batch} env]
+  (let [from (env from)
+        to (env to)]
+    (if async?
+      (ma/batch! from to size timeout rf init)
+      (a/thread (ma/batch!! from to size timeout rf init)))))
 
 ;;; MULT
 
@@ -245,10 +247,10 @@
 
 (defmethod compile-worker :worker.type/mult
   [{{from :mult/from
-     to :mult/to} :worker/mult}]
-  (let [mult (a/mult from)]
+     to :mult/to} :worker/mult} env]
+  (let [mult (a/mult (env from))]
     (doseq [ch to]
-      (a/tap mult ch))))
+      (a/tap mult (env ch)))))
 
 ;;; TODO :worker.type/mix
 
@@ -269,10 +271,10 @@
 (defmethod compile-worker :worker.type/pubsub
   [{{pub :pubsub/pub
      sub :pubsub/sub
-     tf  :pubsub/topic-fn} :worker/pubsub}]
-  (let [p (a/pub pub tf)]
+     tf  :pubsub/topic-fn} :worker/pubsub} env]
+  (let [p (a/pub (env pub) tf)]
     (doseq [{:keys [:sub/topic :sub/chan]} sub]
-      (a/sub p topic chan))))
+      (a/sub p topic (env chan)))))
 
 ;;; PRODUCER
 
@@ -288,10 +290,11 @@
 (defmethod compile-worker :worker.type/produce
   [{{ch :produce/chan
      f  :produce/fn
-     async? :produce/async?} :worker/produce}]
-  (if async?
-    (ma/produce-call! ch f)
-    (a/thread (ma/produce-call!! ch f))))
+     async? :produce/async?} :worker/produce} env]
+  (let [ch (env ch)]
+    (if async?
+      (ma/produce-call! ch f)
+      (a/thread (ma/produce-call!! ch f)))))
 
 ;;; CONSUMER
 
@@ -309,14 +312,15 @@
   [{{ch :consume/chan
      f  :consume/fn
      async? :consume/async?
-     checked? :consume/checked?} :worker/consume}]
-  (if async?
-    ((if checked?
-       ma/consume-checked-call!
-       ma/consume-call!) ch f)
-    (a/thread ((if checked?
-                 ma/consume-checked-call!!
-                 ma/consume-call!!) ch f))))
+     checked? :consume/checked?} :worker/consume} env]
+  (let [ch (env ch)]
+    (if async?
+      ((if checked?
+         ma/consume-checked-call!
+         ma/consume-call!) ch f)
+      (a/thread ((if checked?
+                   ma/consume-checked-call!!
+                   ma/consume-call!!) ch f)))))
 
 ;;; SPLIT
 
@@ -335,8 +339,8 @@
   [{{from :split/from
      to :split/to
      f :split/fn
-     dropping? :split/dropping?} :worker/split}]
-  ((if dropping? ma/split?! ma/split!) f from to))
+     dropping? :split/dropping?} :worker/split} env]
+  ((if dropping? ma/split?! ma/split!) f (env from) (env to)))
 
 ;;; REDUCTIONS
 
@@ -360,11 +364,36 @@
      to :reductions/to
      rf :reductions/rf
      init :reductions/rf
-     async? :reductions/async?} :worker/reductions}]
-  (if async?
-    (ma/reductions! rf init from to)
-    (a/thread
-      (ma/reductions!! rf init from to))))
+     async? :reductions/async?} :worker/reductions} env]
+  (let [from (env from)
+        to (env to)]
+    (if async?
+      (ma/reductions! rf init from to)
+      (a/thread
+        (ma/reductions!! rf init from to)))))
+
+;;; MODEL
+
+(s/def ::worker (s/multi-spec worker-type :worker/type))
+
+(s/def :model/channels (s/+ ::chan))
+(s/def :model/workers (s/+ ::worker))
+
+(s/def ::model (s/keys :req-un [:model/channels :model/workers]))
+
+(defn compile-model
+  [{:keys [channels workers]}]
+  (let [chans (reduce
+               (fn [m spec]
+                 (assoc m (:channel/name spec) (compile-chan spec)))
+               {}
+               channels)
+        workers (reduce
+                 (fn [m spec]
+                   (assoc m (:worker/name spec) (compile-worker spec chans)))
+                 {}
+                 workers)]
+    {:chans chans :workers workers}))
 
 (comment
   (s/def ::from keyword?)
