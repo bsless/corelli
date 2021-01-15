@@ -36,24 +36,6 @@
 
    - Edges: data describing only the channels, including buffer types, buffer functions, size and transducers.
    - Nodes: data describing a pipeline between two channels, mult, producer or consumer.
-
-   Both are defined in terms of specs, using ~clojure.spec.alpha~, which is 
-   the source of truth, but can generally look like so:
-   
-   #+begin_src clojure
-     ;;; edge
-     {::name :input-chan
-      ::buffer :clojure.core.async/buffer
-      ::size 1
-      ::xf :cat}
-
-     ;;; node
-     {::name :parse
-      ::from :input-chan
-      ::to :send-chan
-      ::xf :parse-json}
-   #+end_src
-
    
 *** Buffers
     
