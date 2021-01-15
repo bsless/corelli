@@ -345,9 +345,53 @@
                ma/consume-checked-call!!
                ma/consume-call!!) ch f)))
 
-;;; TODO :worker.type/split
-;;; TODO :worker.type/dropping-slit
-;;; TODO :worker.type/reductions!
+;;; SPLIT
+
+(s/def :split/from :chan/name)
+(s/def :split/to (s/map-of any? :chan/name))
+(s/def :split/fn (s/and keyword? kfn?))
+(s/def :split/dropping? boolean?)
+
+(s/def :worker/split (s/keys :req [:split/from :split/to :split/fn]
+                             :opt [:split/dropping?]))
+
+(defmethod worker-type :worker.type/split [_]
+  (s/keys :req [:worker/type :worker/name :worker/split]))
+
+(defmethod compile-worker :worker.type/split
+  [{{from :split/from
+     to :split/to
+     f :split/fn
+     dropping? :split/dropping?} :worker/split}]
+  ((if dropping? ma/split?! ma/split!) f from to))
+
+;;; REDUCTIONS
+
+(s/def :reductions/from :chan/name)
+(s/def :reductions/to :chan/name)
+(s/def :reductions/rf (s/and keyword? kfn?))
+(s/def :reductions/init (s/and keyword? kfn?))
+(s/def :reductions/async? boolean?)
+(s/def :worker/reductions
+  (s/keys :req [:reductions/from
+                :reductions/to
+                :reductions/rf
+                :reductions/init]
+          :opt [:reductions/async?]))
+
+(defmethod worker-type :worker.type/reductions [_]
+  (s/keys :req [:worker/name :worker/type :worker/reductions]))
+
+(defmethod compile-worker :worker.type/reductions
+  [{{from :reductions/from
+     to :reductions/to
+     rf :reductions/rf
+     init :reductions/rf
+     async? :reductions/async?} :worker/reductions}]
+  (if async?
+    (ma/reductions! rf init from to)
+    (a/thread
+      (ma/reductions!! rf init from to))))
 
 (comment
   (s/def ::from keyword?)
