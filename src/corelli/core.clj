@@ -169,6 +169,8 @@
 
 (defmulti compile-worker :worker/type)
 
+;;; PIPELINE
+
 (s/def :pipeline/to :chan/name)
 (s/def :pipeline/from :chan/name)
 (s/def :pipeline/size int?)
@@ -208,6 +210,8 @@
      size :pipeline/size
      af :pipeline/xf} :worker/pipeline}]
   (a/pipeline-async size to af from))
+
+;;; BATCH
 
 (s/def :batch/in :chan/name)
 (s/def :batch/out :chan/name)
@@ -250,6 +254,8 @@
   (a/thread
     (ma/batch!! in out size timeout rf init)))
 
+;;; MULT
+
 (s/def :mult/from :chan/name)
 (s/def :mult/to (s/+ :chan/name))
 
@@ -267,6 +273,8 @@
       (a/tap mult ch))))
 
 ;;; TODO :worker.type/mix
+
+;;; PUBSUB
 
 (s/def :pubsub/pub :chan/name)
 (s/def :sub/topic any?)
@@ -288,7 +296,29 @@
     (doseq [{:keys [:sub/topic :sub/chan]} sub]
       (a/sub p topic chan))))
 
-;;; TODO :worker.type/produce!
+;;; PRODUCER
+
+(s/def :produce/chan :chan/name)
+(s/def :produce/fn (s/and keyword? kfn?))
+(s/def :worker/produce!  (s/keys :req [:produce/chan :produce/fn]))
+(s/def :worker/produce!! (s/keys :req [:produce/chan :produce/fn]))
+
+(defmethod worker-type :worker.type/produce! [_]
+  (s/keys :req [:worker/type :worker/name :worker/pubsub]))
+
+(defmethod worker-type :worker.type/produce!
+  [{{ch :produce/chan
+     f  :produce/fn} :worker/produce}]
+  (ma/produce-call! ch f))
+
+(defmethod worker-type :worker.type/produce!! [_]
+  (s/keys :req [:worker/type :worker/name :worker/pubsub]))
+
+(defmethod worker-type :worker.type/produce!!
+  [{{ch :produce/chan
+     f  :produce/fn} :worker/produce}]
+  (a/thread (ma/produce-call!! ch f)))
+
 ;;; TODO :worker.type/consume!
 ;;; TODO :worker.type/checked-consume!
 ;;; TODO :worker.type/split
