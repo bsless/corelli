@@ -156,9 +156,6 @@
                       :worker.type/consume!
                       :worker.type/consume!!
 
-                      :worker.type/checked-consume!
-                      :worker.type/checked-consume!!
-
                       :worker.type/split
                       :worker.type/split-dropping
 
@@ -300,11 +297,10 @@
 
 (s/def :produce/chan :chan/name)
 (s/def :produce/fn (s/and keyword? kfn?))
-(s/def :worker/produce!  (s/keys :req [:produce/chan :produce/fn]))
-(s/def :worker/produce!! (s/keys :req [:produce/chan :produce/fn]))
+(s/def :worker/produce (s/keys :req [:produce/chan :produce/fn]))
 
 (defmethod worker-type :worker.type/produce! [_]
-  (s/keys :req [:worker/type :worker/name :worker/pubsub]))
+  (s/keys :req [:worker/type :worker/name :worker/produce]))
 
 (defmethod worker-type :worker.type/produce!
   [{{ch :produce/chan
@@ -312,15 +308,43 @@
   (ma/produce-call! ch f))
 
 (defmethod worker-type :worker.type/produce!! [_]
-  (s/keys :req [:worker/type :worker/name :worker/pubsub]))
+  (s/keys :req [:worker/type :worker/name :worker/produce]))
 
 (defmethod worker-type :worker.type/produce!!
   [{{ch :produce/chan
      f  :produce/fn} :worker/produce}]
   (a/thread (ma/produce-call!! ch f)))
 
-;;; TODO :worker.type/consume!
-;;; TODO :worker.type/checked-consume!
+;;; CONSUMER
+
+(s/def :consume/chan :chan/name)
+(s/def :consume/fn (s/and keyword? kfn?))
+(s/def :consume/checked? boolean?)
+(s/def :worker/consume (s/keys :req [:consume/chan :consume/fn]
+                               :opt [:consume/checked?]))
+
+(defmethod worker-type :worker.type/consume! [_]
+  (s/keys :req [:worker/type :worker/name :worker/consume]))
+
+(defmethod worker-type :worker.type/consume!
+  [{{ch :consume/chan
+     f  :consume/fn
+     checked? :consume/checked?} :worker/consume}]
+  ((if checked?
+     ma/consume-checked-call!
+     ma/consume-call!) ch f))
+
+(defmethod worker-type :worker.type/consume!! [_]
+  (s/keys :req [:worker/type :worker/name :worker/consume]))
+
+(defmethod worker-type :worker.type/consume!!
+  [{{ch :consume/chan
+     f  :consume/fn
+     checked? :consume/checked?} :worker/consume}]
+  (a/thread ((if checked?
+               ma/consume-checked-call!!
+               ma/consume-call!!) ch f)))
+
 ;;; TODO :worker.type/split
 ;;; TODO :worker.type/dropping-slit
 ;;; TODO :worker.type/reductions!
