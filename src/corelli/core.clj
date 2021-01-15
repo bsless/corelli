@@ -302,7 +302,7 @@
 (defmethod worker-type :worker.type/produce! [_]
   (s/keys :req [:worker/type :worker/name :worker/produce]))
 
-(defmethod worker-type :worker.type/produce!
+(defmethod compile-worker :worker.type/produce!
   [{{ch :produce/chan
      f  :produce/fn} :worker/produce}]
   (ma/produce-call! ch f))
@@ -310,7 +310,7 @@
 (defmethod worker-type :worker.type/produce!! [_]
   (s/keys :req [:worker/type :worker/name :worker/produce]))
 
-(defmethod worker-type :worker.type/produce!!
+(defmethod compile-worker :worker.type/produce!!
   [{{ch :produce/chan
      f  :produce/fn} :worker/produce}]
   (a/thread (ma/produce-call!! ch f)))
@@ -326,7 +326,7 @@
 (defmethod worker-type :worker.type/consume! [_]
   (s/keys :req [:worker/type :worker/name :worker/consume]))
 
-(defmethod worker-type :worker.type/consume!
+(defmethod compile-worker :worker.type/consume!
   [{{ch :consume/chan
      f  :consume/fn
      checked? :consume/checked?} :worker/consume}]
@@ -337,7 +337,7 @@
 (defmethod worker-type :worker.type/consume!! [_]
   (s/keys :req [:worker/type :worker/name :worker/consume]))
 
-(defmethod worker-type :worker.type/consume!!
+(defmethod compile-worker :worker.type/consume!!
   [{{ch :consume/chan
      f  :consume/fn
      checked? :consume/checked?} :worker/consume}]
