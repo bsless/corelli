@@ -298,30 +298,25 @@
 (s/def :consume/chan :chan/name)
 (s/def :consume/fn (s/and keyword? kfn?))
 (s/def :consume/checked? boolean?)
+(s/def :consume/async? boolean?)
 (s/def :worker/consume (s/keys :req [:consume/chan :consume/fn]
-                               :opt [:consume/checked?]))
+                               :opt [:consume/checked? :consume/async?]))
 
-(defmethod worker-type :worker.type/consume! [_]
+(defmethod worker-type :worker.type/consume [_]
   (s/keys :req [:worker/type :worker/name :worker/consume]))
 
-(defmethod compile-worker :worker.type/consume!
+(defmethod compile-worker :worker.type/consume
   [{{ch :consume/chan
      f  :consume/fn
+     async? :consume/async?
      checked? :consume/checked?} :worker/consume}]
-  ((if checked?
-     ma/consume-checked-call!
-     ma/consume-call!) ch f))
-
-(defmethod worker-type :worker.type/consume!! [_]
-  (s/keys :req [:worker/type :worker/name :worker/consume]))
-
-(defmethod compile-worker :worker.type/consume!!
-  [{{ch :consume/chan
-     f  :consume/fn
-     checked? :consume/checked?} :worker/consume}]
-  (a/thread ((if checked?
-               ma/consume-checked-call!!
-               ma/consume-call!!) ch f)))
+  (if async?
+    ((if checked?
+       ma/consume-checked-call!
+       ma/consume-call!) ch f)
+    (a/thread ((if checked?
+                 ma/consume-checked-call!!
+                 ma/consume-call!!) ch f))))
 
 ;;; SPLIT
 
