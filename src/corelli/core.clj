@@ -278,23 +278,19 @@
 
 (s/def :produce/chan :chan/name)
 (s/def :produce/fn (s/and keyword? kfn?))
+(s/def :produce/async? boolean?)
 (s/def :worker/produce (s/keys :req [:produce/chan :produce/fn]))
 
-(defmethod worker-type :worker.type/produce! [_]
+(defmethod worker-type :worker.type/produce [_]
   (s/keys :req [:worker/type :worker/name :worker/produce]))
 
-(defmethod compile-worker :worker.type/produce!
+(defmethod compile-worker :worker.type/produce
   [{{ch :produce/chan
-     f  :produce/fn} :worker/produce}]
-  (ma/produce-call! ch f))
-
-(defmethod worker-type :worker.type/produce!! [_]
-  (s/keys :req [:worker/type :worker/name :worker/produce]))
-
-(defmethod compile-worker :worker.type/produce!!
-  [{{ch :produce/chan
-     f  :produce/fn} :worker/produce}]
-  (a/thread (ma/produce-call!! ch f)))
+     f  :produce/fn
+     async? :produce/async?} :worker/produce}]
+  (if async?
+    (ma/produce-call! ch f)
+    (a/thread (ma/produce-call!! ch f))))
 
 ;;; CONSUMER
 
