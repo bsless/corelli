@@ -198,7 +198,7 @@
 
 ;;; BATCH
 
-(s/def :batch/in :chan/name)
+(s/def :batch/from :chan/name)
 (s/def :batch/to :chan/name)
 (s/def :batch/size int?)
 (s/def :batch/timeout int?)
@@ -207,7 +207,7 @@
 (s/def :batch/async? boolean?)
 
 (s/def :worker/batch
-  (s/keys :req [:batch/in
+  (s/keys :req [:batch/from
                 :batch/to
                 :batch/size
                 :batch/timeout]
@@ -219,7 +219,7 @@
   (s/keys :req [:worker/type :worker/name :worker/batch]))
 
 (defmethod compile-worker :worker.type/batch
-  [{{in :batch/in
+  [{{from :batch/from
      to :batch/to
      size :batch/size
      timeout :batch/timeout
@@ -229,8 +229,8 @@
      :or {rf conj
           init (constantly [])}} :worker/batch}]
   (if async?
-    (ma/batch! in to size timeout rf init)
-    (a/thread (ma/batch!! in to size timeout rf init))))
+    (ma/batch! from to size timeout rf init)
+    (a/thread (ma/batch!! from to size timeout rf init))))
 
 ;;; MULT
 
