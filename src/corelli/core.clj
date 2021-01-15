@@ -44,7 +44,7 @@
 (s/def ::fixed-buffer (s/keys :req [:buffer/size]
                               :opt [:buffer/type]))
 
-(s/def :buffer/fn (s/and keyword? kfn?))
+(s/def :buffer/fn fn?)
 (s/def :buffer.fn/args (s/* any?))
 
 (defmulti buffer-type :buffer/type)
@@ -159,7 +159,7 @@
 (s/def :pipeline/to :chan/name)
 (s/def :pipeline/from :chan/name)
 (s/def :pipeline/size int?)
-(s/def :pipeline/xf (s/and keyword? kfn?))
+(s/def :pipeline/xf fn?)
 (s/def :worker/pipeline
   (s/keys :req [:pipeline/to
                 :pipeline/from
@@ -202,8 +202,8 @@
 (s/def :batch/to :chan/name)
 (s/def :batch/size int?)
 (s/def :batch/timeout int?)
-(s/def :batch/rf (s/and keyword? kfn?))
-(s/def :batch/init (s/and keyword? kfn?))
+(s/def :batch/rf fn?)
+(s/def :batch/init fn?)
 (s/def :batch/async? boolean?)
 
 (s/def :worker/batch
@@ -258,7 +258,7 @@
 (s/def :sub/topic any?)
 (s/def :sub/chan :chan/name)
 (s/def :pubsub/sub (s/+ (s/keys :req [:sub/topic :sub/chan])))
-(s/def :pubsub/topic-fn (s/or :fn fn? :kfn (s/and keyword? kfn?)))
+(s/def :pubsub/topic-fn fn?)
 
 (s/def :worker/pubsub
   (s/keys :req [:pubsub/pub :pubsub/sub :pubsub/topic-fn]))
@@ -277,7 +277,7 @@
 ;;; PRODUCER
 
 (s/def :produce/chan :chan/name)
-(s/def :produce/fn (s/and keyword? kfn?))
+(s/def :produce/fn fn?)
 (s/def :produce/async? boolean?)
 (s/def :worker/produce (s/keys :req [:produce/chan :produce/fn]
                                :opt [:produce/async?]))
@@ -296,7 +296,7 @@
 ;;; CONSUMER
 
 (s/def :consume/chan :chan/name)
-(s/def :consume/fn (s/and keyword? kfn?))
+(s/def :consume/fn fn?)
 (s/def :consume/checked? boolean?)
 (s/def :consume/async? boolean?)
 (s/def :worker/consume (s/keys :req [:consume/chan :consume/fn]
@@ -322,7 +322,7 @@
 
 (s/def :split/from :chan/name)
 (s/def :split/to (s/map-of any? :chan/name))
-(s/def :split/fn (s/and keyword? kfn?))
+(s/def :split/fn fn?)
 (s/def :split/dropping? boolean?)
 
 (s/def :worker/split (s/keys :req [:split/from :split/to :split/fn]
@@ -342,8 +342,8 @@
 
 (s/def :reductions/from :chan/name)
 (s/def :reductions/to :chan/name)
-(s/def :reductions/rf (s/and keyword? kfn?))
-(s/def :reductions/init (s/and keyword? kfn?))
+(s/def :reductions/rf fn?)
+(s/def :reductions/init fn?)
 (s/def :reductions/async? boolean?)
 (s/def :worker/reductions
   (s/keys :req [:reductions/from
