@@ -385,15 +385,53 @@
   [{:keys [channels workers]}]
   (let [chans (reduce
                (fn [m spec]
-                 (assoc m (:channel/name spec) (compile-chan spec)))
+                 (assoc m (:chan/name spec) (compile-chan spec)))
                {}
                channels)
+        env (fn [lookup]
+              (if-some [ch (get chans lookup)]
+                ch
+                (throw (ex-info "Channel not found" chans))))
         workers (reduce
                  (fn [m spec]
-                   (assoc m (:worker/name spec) (compile-worker spec chans)))
+                   (assoc m (:worker/name spec) (compile-worker spec env)))
                  {}
                  workers)]
     {:chans chans :workers workers}))
+
+(comment
+  (def model
+    {:channels [{:chan/name :in
+                 :chan/type :chan.type/sized
+                 :chan/size 1}
+                {:chan/name :out
+                 :chan/type :chan.type/sized
+                 :chan/size 1}]
+     :workers [{:worker/name :producer
+                :worker/type :worker.type/produce
+                :worker/produce
+                {:produce/chan :in
+                 :produce/async? true
+                 :produce/fn (let [a (atom 0)]
+                               (fn drive []
+                                 (Thread/sleep 1000)
+                                 (swap! a inc)))}}
+               {:worker/name :pipeline
+                :worker/type :worker.type/pipeline-blocking
+                :worker/pipeline
+                {:pipeline/from :in
+                 :pipeline/to :out
+                 :pipeline/size 4
+                 :pipeline/xf (map (fn [x] (println x) (Thread/sleep 2500) x))}}
+               {:worker/name :consumer
+                :worker/type :worker.type/consume
+                :worker/consume
+                {:consume/chan :out
+                 :consume/fn (fn [x] (println :OUT x))
+                 :consume/async? true}}]})
+
+  (def system (compile-model model))
+  (a/close! (:in (:chans system))))
 
 (comment
   (s/def ::from keyword?)
