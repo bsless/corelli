@@ -55,6 +55,57 @@
    #+end_src
 
    
+*** Buffers
+    
+    #+begin_src clojure
+      {:buffer/type :buffer.type/blocking
+       :buffer/size 8}
+
+      {:buffer/type :buffer.type/sliding
+       :buffer/size 8}
+
+      {:buffer/type :buffer.type/dropping
+       :buffer/size 8}
+    #+end_src
+    
+*** Channels
+
+    #+begin_src clojure
+      {:chan/name :a
+       :chan/type :chan.type/simple}
+
+      {:chan/name :b
+       :chan/type :chan.type/sized
+       :chan/size 8}
+
+      {:chan/name :c
+       :chan/type :chan.type/buffered
+       :chan/buffer {:buffer/type :buffer.type/blocking
+                     :buffer/size 8}}
+    #+end_src
+    
+** Extension
+
+*** Buffers
+
+    #+begin_src clojure
+      (defmethod buffer-type :buffer.type/your-new-type [_] ::spec-for-your-type)
+
+      (defmethod compile-buffer :buffer.type/your-new-type
+        [{:keys [:buffer/arg1 :buffer/arg2]}]
+        (your-buffer-fn arg1 arg2))
+    #+end_src
+    
+*** Channels
+
+    #+begin_src clojure
+      (defmethod chan-type :chan.type/your-new-type [_] ::spec-for-your-type)
+
+      (defmethod compile-chan :chan.type/your-new-type
+        [{:keys [:chan/arg1 :chan/arg2]}]
+        (your-chan-fn arg1 arg2))
+    #+end_src
+
 ** Usage
 
    - Define correct sequences of edges and nodes (can be verified using spec).
