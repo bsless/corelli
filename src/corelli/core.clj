@@ -279,7 +279,8 @@
 (s/def :produce/chan :chan/name)
 (s/def :produce/fn (s/and keyword? kfn?))
 (s/def :produce/async? boolean?)
-(s/def :worker/produce (s/keys :req [:produce/chan :produce/fn]))
+(s/def :worker/produce (s/keys :req [:produce/chan :produce/fn]
+                               :opt [:produce/async?]))
 
 (defmethod worker-type :worker.type/produce [_]
   (s/keys :req [:worker/type :worker/name :worker/produce]))
