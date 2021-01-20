@@ -250,7 +250,8 @@
      to :mult/to} :worker/mult} env]
   (let [mult (a/mult (env from))]
     (doseq [ch to]
-      (a/tap mult (env ch)))))
+      (a/tap mult (env ch)))
+    mult))
 
 ;;; TODO :worker.type/mix
 
@@ -274,7 +275,8 @@
      tf  :pubsub/topic-fn} :worker/pubsub} env]
   (let [p (a/pub (env pub) tf)]
     (doseq [{:keys [:sub/topic :sub/chan]} sub]
-      (a/sub p topic (env chan)))))
+      (a/sub p topic (env chan)))
+    p))
 
 ;;; PRODUCER
 
