@@ -1,6 +1,6 @@
 * Corelli
 
-  [[https:en.wikipedia.org/wiki/Arcangelo_Corelli][Arcangelo Corelli]]:
+  [[https://en.wikipedia.org/wiki/Arcangelo_Corelli][Arcangelo Corelli]]:
   
   #+begin_quote
   Arcangelo Corelli was an Italian violinist and composer of the Baroque era. 
@@ -36,30 +36,73 @@
 
    - Edges: data describing only the channels, including buffer types, buffer functions, size and transducers.
    - Nodes: data describing a pipeline between two channels, mult, producer or consumer.
-
-   Both are defined in terms of specs, using ~clojure.spec.alpha~, which is 
-   the source of truth, but can generally look like so:
    
-   #+begin_src clojure
-     ;;; edge
-     {::name :input-chan
-      ::buffer :clojure.core.async/buffer
-      ::size 1
-      ::xf :cat}
+*** Buffers
+    
+    #+begin_src clojure
+      {:buffer/type :buffer.type/blocking
+       :buffer/size 8}
 
-     ;;; node
-     {::name :parse
-      ::from :input-chan
-      ::to :send-chan
-      ::xf :parse-json}
-   #+end_src
+      {:buffer/type :buffer.type/sliding
+       :buffer/size 8}
 
-   
+      {:buffer/type :buffer.type/dropping
+       :buffer/size 8}
+    #+end_src
+    
+*** Channels
+
+    #+begin_src clojure
+      {:chan/name :a
+       :chan/type :chan.type/simple}
+
+      {:chan/name :b
+       :chan/type :chan.type/sized
+       :chan/size 8}
+
+      {:chan/name :c
+       :chan/type :chan.type/buffered
+       :chan/buffer {:buffer/type :buffer.type/blocking
+                     :buffer/size 8}}
+    #+end_src
+    
+** Extension
+
+*** Buffers
+
+    #+begin_src clojure
+      (defmethod buffer-type :buffer.type/your-new-type [_] ::spec-for-your-type)
+
+      (defmethod compile-buffer :buffer.type/your-new-type
+        [{:keys [:buffer/arg1 :buffer/arg2]}]
+        (your-buffer-fn arg1 arg2))
+    #+end_src
+    
+*** Channels
+
+    #+begin_src clojure
+      (defmethod chan-type :chan.type/your-new-type [_] ::spec-for-your-type)
+
+      (defmethod compile-chan :chan.type/your-new-type
+        [{:keys [:chan/arg1 :chan/arg2]}]
+        (your-chan-fn arg1 arg2))
+    #+end_src
+
+*** Workers
+    
+    #+begin_src clojure
+      (defmethod worker-type :worker.type/your-new-type [_] ::spec-for-your-type)
+
+      (defmethod compile-worker :worker.type/your-new-type
+        [{:keys [:worker/arg1 :worker/arg2]}]
+        (your-worker-fn arg1 arg2))
+    #+end_src
+
 ** Usage
 
    - Define correct sequences of edges and nodes (can be verified using spec).
    - Define the required vars.
-   - Try compiling the model using ~compile-topology~.
+   - Try compiling the model using ~compile-model~.
 
 ** Status
    
@@ -67,12 +110,8 @@
 
 ** Roadmap
    
-   - [ ] Rework channel representation
-   - [ ] qualify different specs
-   - [ ] replace ~cond~ with multimethod.
    - [ ] Tests
    - [ ] Analyze the topology to find any dangling channels or disconnected pipes before instancing the pipes.
    - [ ] Implement ~select~ based on ~alt!~ and/or ~alts!~.
    - [ ] Find an idiomatic way to connect a web handler as driver.
-   - [ ] plugin / extension system.
    - [ ] Refine specs, currently have no way to differentiate transducers from regular functions.

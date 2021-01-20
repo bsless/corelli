@@ -2,378 +2,508 @@
   (:require
    [clojure.spec.alpha :as s]
    [clojure.core.async :as a]
+   [more.async :as ma]
    [clojure.data]))
 
 (defn kw->fn
   [kw]
   (when kw (resolve (symbol kw))))
 
-(defn produce
-  "Puts the contents repeatedly calling f into the supplied channel.
-
-  By default the channel will be closed after the items are copied,
-  but can be determined by the close? parameter.
-
-  Returns a channel which will close after the items are copied.
-
-  Based on clojure.core.async/onto-chan.
-  Equivalent to (onto-chan ch (repeatedly f)) but cuts out the seq."
-  ([ch f] (produce ch f true))
-  ([ch f close?]
-   (a/go-loop [v (f)]
-     (if (and v (a/>! ch v))
-       (recur (f))
-       (when close?
-         (a/close! ch))))))
-
-(defn produce-blocking
-  "Like `produce` but blocking in a thread."
-  ([ch f] (produce ch f true))
-  ([ch f close?]
-   (a/thread
-     (loop [v (f)]
-       (if (and v (a/>!! ch v))
-         (recur (f))
-         (when close?
-           (a/close! ch)))))))
-
-(defn produce-bound-blocking
-  "Like `produce-blocking`, but calls `pre` and `post` in the context
-  of the thread.
-  The value returned by `pre` is passed to `f` and `post`.
-  `pre` is called before the loop, `post` after it exhausts.
-
-  Useful for non thread safe objects which throw upon being accessed from
-  different threads."
-  [ch f close? pre post]
-   (a/thread
-     (let [pv (pre)]
-       (loop [v (f pv)]
-         (if (and v (a/>!! ch v))
-           (recur (f pv))
-           (when close?
-             (a/close! ch))))
-       (post pv))))
-
-(defn consume
-  "Takes values repeatedly from channels and applies f to them.
-
-  The opposite of produce.
-
-  Stops consuming values when the channel is closed."
-  [ch f]
-  (a/go-loop [v (a/<! ch)]
-    (when v
-      (f v)
-      (recur (a/<! ch)))))
-
-(defn consume?
-  "Takes values repeatedly from channels and applies f to them.
-  Recurs only when f returns a non false-y value.
-
-  The opposite of produce.
-
-  Stops consuming values when the channel is closed."
-  [ch f]
-  (a/go-loop [v (a/<! ch)]
-    (when v
-      (when (f v)
-        (recur (a/<! ch))))))
-
-(defn consume-blocking
-  "Takes values repeatedly from channels and applies f to them.
-
-  The opposite of produce.
-
-  Stops consuming values when the channel is closed."
-  [ch f]
-  (a/thread
-    (loop [v (a/<!! ch)]
-      (when v
-        (f v)
-        (recur (a/<!! ch))))))
-
-(defn consume-blocking?
-  "Takes values repeatedly from channels and applies f to them.
-  Recurs only when f returns a non false-y value.
-
-  The opposite of produce.
-
-  Stops consuming values when the channel is closed."
-  [ch f]
-  (a/thread
-    (loop [v (a/<!! ch)]
-      (when v
-        (when (f v)
-          (recur (a/<!! ch)))))))
-
-
-(defn split*
-  "Takes a channel, function f :: v -> k and a map of keys to channels k -> ch,
-  routing the values v from the input channel to the channel such that
-  (f v) -> ch.
-
-  (get m (f v)) must be non-nil for every v! "
-  ([f ch m]
-   (a/go-loop []
-     (let [v (a/<! ch)]
-       (if (nil? v)
-         (doseq [c (vals m)] (a/close! c))
-         (if-let [o (get m (f v))]
-           (when (a/>! o v)
-             (recur))
-           (throw (Exception. "Channel does not exist"))))))))
-
-(defn split-maybe
-  "Takes a channel, function f :: v -> k and a map of keys to channels k -> ch,
-  routing the values v from the input channel to the channel such that
-  (f v) -> ch.
-
-  If (f v) is not in m, the value is dropped"
-  ([f ch m]
-   (a/go-loop []
-     (let [v (a/<! ch)]
-       (if (nil? v)
-         (doseq [c (vals m)] (a/close! c))
-         (if-let [o (get m (f v))]
-           (when (a/>! o v)
-             (recur))
-           (recur)))))))
-
 (defn kfn? [kw] (ifn? (kw->fn kw)))
 
-(s/def ::from keyword?)
-(s/def ::to keyword?)
-(s/def ::to+ (s/+ ::to))
-(s/def ::jobs integer?)
-(s/def ::close? boolean?)
-(s/def ::type
-  #{:pipe
-    :pipeline
-    :pipeline-async
-    :pipeline-blocking
-    :producer
-    :consumer
-    :mult})
-(s/def ::xf kfn?)
-(s/def ::name keyword?)
-(s/def ::buffn kfn?)
-(s/def ::size integer?)
-(s/def ::buffn-or-n (s/or :buffer-fn kfn? :size integer?))
-(s/def ::ex-handler fn?)
+(s/def ::name (s/or :keyword keyword?
+                    :string string?
+                    :number number?
+                    :symbol symbol?))
 
-(s/def ::mult
-  (s/keys :req [::name ::from ::to+]
-          :opt [::close?]))
+(s/def :chan/name ::name)
 
-(s/def ::pipe
-  (s/keys :req [::name ::from ::to]
-          :opt [::close?]))
+(comment
+  (s/valid? :chan/name 1)
+  (s/valid? :chan/name [])
+  (s/explain-data :chan/name []))
 
-(s/def ::pipeline
-  (s/keys :req [::name ::from ::to ::xf]
-          :opt [::close? ::jobs]))
+(s/def :chan/size int?)
 
-(s/def ::pipeline-async
-  (s/keys :req [::name ::from ::to ::xf]
-          :opt [::close? ::jobs]))
+(s/def ::simple-chan
+  (s/keys
+   :req [:chan/name]))
 
-(s/def ::pipeline-blocking
-  (s/keys :req [::name ::from ::to ::xf]
-          :opt [::close? ::jobs]))
+(s/def ::sized-chan
+  (s/keys
+   :req [:chan/size
+         :chan/name]))
 
-(s/def ::producer
-  (s/keys :req [::name ::to ::xf]
-          :opt [::close? ::jobs]))
+(s/def :buffer/size int?)
 
-(s/def ::consumer
-  (s/keys :req [::name ::from ::xf]
-          :opt [::jobs]))
+(s/def ::fixed-buffer (s/keys :req [:buffer/size]))
 
-(def node-specs
-  [::mult
-   ::pipe
-   ::pipeline
-   ::pipeline-blocking
-   ::pipeline-async
-   ::producer
-   ::consumer])
+(s/def :buffer/fn fn?)
+(s/def :buffer.fn/args (s/* any?))
 
-(s/def ::unbuffered-channel
-  (s/keys :req [::name]
-          :opt [::size]))
+(defmulti buffer-type :buffer/type)
+(defmethod buffer-type :buffer.type/blocking [_] (s/keys :req [:buffer/size]))
+(defmethod buffer-type :buffer.type/sliding [_] (s/keys :req [:buffer/size]))
+(defmethod buffer-type :buffer.type/dropping [_] (s/keys :req [:buffer/size]))
 
-(s/def ::xf-channel
-  (s/keys :req [::name ::size ::xf]
-          :opt [::ex-handler]))
+(s/def :chan/buffer (s/multi-spec buffer-type :buffer/type))
 
-(s/def ::buffered-channel
-  (s/keys :req [::name ::buffn ::size]
-          :opt [::buffn-args]))
+(defmulti compile-buffer :buffer/type)
 
-(s/def ::buffered-xf-channel
-  (s/keys :req [::name ::buffn ::size ::xf]
-          :opt [::buffn-args ::ex-handler]))
+(defmethod compile-buffer :buffer.type/blocking
+  [{:keys [:buffer/size]}]
+  (a/buffer size))
 
-(def channel-specs
-  [::unbuffered-channel
-   ::xf-channel
-   ::buffered-channel
-   ::buffered-xf-channel])
+(defmethod compile-buffer :buffer.type/sliding
+  [{:keys [:buffer/size]}]
+  (a/sliding-buffer size))
 
-(defn- explain-specs-data
-  [v specs]
-  (let [explanations (map #(s/explain-data % v) specs)]
-    (zipmap specs explanations)))
+(defmethod compile-buffer :buffer.type/dropping
+  [{:keys [:buffer/size]}]
+  (a/dropping-buffer size))
 
-(defn- explain-specs-str
-  [v specs]
-  (let [explanations (map #(s/explain-str % v) specs)]
-    (zipmap specs explanations)))
+(comment
+  (compile-buffer {:buffer/type :buffer.type/blocking
+                   :buffer/size 1}))
 
-(defn- one-of-specs?
-  "Checks v satisfies one of specs.
-  Returns nil and reports result if not
+(s/def ::buffered-chan
+  (s/keys
+   :req [:chan/name
+         :chan/buffer]))
 
-  Workaround for lacking `or` types in spec.alpha.
-  waiting for spec2"
-  [v specs]
-  (some #(if (s/valid? % v) %) specs))
+(defmulti chan-type :chan/type)
 
-(defn compile-channel
-  [m]
-  (if-let [spec (one-of-specs? m channel-specs)]
-    (let [buffer (kw->fn (get m ::buffn))
-          size (get m ::size) ;; (chan nil) == (chan)
-          args (get m ::buffn-args [])
-          xf (kw->fn (get m ::xf))
-          exh (kw->fn (get m ::ex-handler))]
-      (case spec
-        ::buffered-xf-channel (a/chan (apply buffer size args) xf exh)
-        ::buffered-channel (a/chan (apply buffer size args))
-        ::unbuffered-channel (a/chan size)))
-    (throw (new Exception "channel does not match any spec."))))
+(defmethod chan-type :chan.type/simple [_] ::simple-chan)
+(defmethod chan-type :chan.type/sized [_] ::sized-chan)
+(defmethod chan-type :chan.type/buffered [_] ::buffered-chan)
 
-(defn explain-channel
-  [m]
-  (doseq [[k s] (explain-specs-str m channel-specs)
-          :let [o (str k " failed:\n" s)]]
-    (println o)))
+(s/def ::chan (s/multi-spec chan-type :chan/type))
 
-(defn compile-node
-  [node edges]
-  (if-let [spec (one-of-specs? node node-specs)]
-    (let [from (get edges (get node ::from))
-          to (get edges (get node ::to))
-          xf (kw->fn (get node ::xf))
-          close? (get node ::close? true)
-          n (get node ::jobs 1)]
-      (case spec
-        ::pipe (a/pipe from to close?)
-        ::pipeline (a/pipeline n to xf from close?)
-        ::pipeline-async (a/pipeline-async n to xf from close?)
-        ::pipeline-blocking (a/pipeline-blocking n to xf from close?)
-        ::producer (produce to xf close?)
-        ::consumer (consume from xf)
-        ::mult (let [m (a/mult from)]
-                 (doseq [k (get node ::to+)]
-                   (when-let [ch (get edges k)]
-                     (a/tap m ch close?)))
-                 m)))
-    (throw (new Exception "node does not match any spec."))))
+(defmulti compile-chan :chan/type)
 
-(defn explain-node
-  [m]
-  (doseq [[k s] (explain-specs-str m node-specs)
-          :let [o (str k " failed:\n" s)]]
-    (println o)))
+(defmethod compile-chan :chan.type/simple [_] (a/chan))
 
-(defn compile-topology
-  [edges nodes]
-  (let [edges
-        (reduce
-         (fn [m e]
-           (assoc m (::name e) (compile-channel e)))
-         {}
-         edges)
-        nodes
-        (reduce
-         (fn [m n]
-           (assoc m (::name n) (compile-node n edges)))
-         {}
-         nodes)]
-    {:edges edges :nodes nodes}))
+(defmethod compile-chan :chan.type/sized
+  [{:keys [:chan/size]}]
+  (a/chan size))
 
-;;; Validation
+(defmethod compile-chan :chan.type/buffered
+  [{:keys [:chan/buffer]}]
+  (a/chan (compile-buffer buffer)))
 
-(defn valid-edge?
-  [edge]
-  (when-let [spec (one-of-specs? edge channel-specs)]
-    (assoc edge :spec spec)))
+(comment
+  (compile-chan {:chan/type :chan.type/buffered
+                 :chan/buffer {:buffer/type :buffer.type/sliding
+                               :buffer/size 2}}))
 
-(defn valid-edges?
-  [edges]
-  (let [edges (map valid-edge? edges)]
-    (if (every? some? edges)
-      edges)))
+(comment
 
-(defn valid-node?
-  [node]
-  (when-let [spec (one-of-specs? node node-specs)]
-    (assoc node :spec spec)))
+  (s/explain-data ::chan {:chan/type :chan.type/simple
+                          :chan/name :in})
 
-(defn valid-nodes?
-  [nodes]
-  (let [nodes (map valid-node? nodes)]
-    (if (every? some? nodes)
-      nodes)))
+  (s/explain-data ::chan {:chan/type :chan.type/sized
+                          :chan/size 1
+                          :chan/name :in})
 
-(defn name-collisions?
-  [ms]
-  (let [collided
-        (->>
-         (group-by ::name ms)
-         (filter (fn [[k g]] (< 1 (count g))) )
-         (into {}))]
-    (when (not= collided {})
-      collided)))
+  (s/explain-data ::sized-chan {:chan/type :chan.type/sized
+                                :chan/size 1
+                                :chan/name :in})
 
+  (s/explain-data ::chan {:chan/type :chan.type/sized
+                          :chan/name :in
+                          :chan/size 1})
 
-(defn analyze-connectivity
-  "Checks nodes and edges specs for dangling edges and disconnected nodes"
-  [nodes edges]
-  (let [g (group-by ::name edges)
-        edges-names (set (keys g))
-        connected
-        (set
-         (remove
-          nil?
-          (concat (map ::from nodes)
-                  (map ::to nodes))))
-        [dangling-edges disconnected-nodes ok]
-        (clojure.data/diff edges-names connected)]
-    {:dangling dangling-edges
-     :disconnected disconnected-nodes}))
+  (s/explain-data :chan/buffer {:buffer/size 1
+                                :buffer/type :buffer.type/blocking})
 
-(defn report-dangling
-  [dangling edges]
-  (let [es (vals (select-keys (group-by ::name edges) dangling))
-        s (str "The following edges are dangling:\n"
-               (with-out-str (clojure.pprint/pprint es)))]
-    (println s)))
+  (s/conform ::chan {:chan/name :out
+                     :chan/type :chan.type/buffered
+                     :chan/buffer
+                     {:buffer/size 1
+                      :buffer/type :buffer.type/blocking}})
+  )
 
-(defn report-disconnected
-  [diconnected nodes]
-  (let [to (vals (select-keys (group-by ::to nodes) diconnected))
-        from (vals (select-keys (group-by ::from nodes) diconnected))
-        s (str "The following nodes are disconnected:\n"
-               (when (seq from)
-                 (str "No ::from channel:\n"
-                      (with-out-str (clojure.pprint/pprint from))))
-               (when (seq to)
-                 (str "No ::to channel:\n"
-                      (with-out-str (clojure.pprint/pprint to)))))]
-    (println s)))
+(s/def :worker/name ::name)
 
-(defn valid-connectivity?
-  [edges nodes])
+(defmulti worker-type :worker/type)
+
+(defmulti compile-worker (fn [worker _env] (get worker :worker/type)))
+
+(defmulti ports :worker/type)
+
+;;; PIPELINE
+
+(s/def :pipeline/to :chan/name)
+(s/def :pipeline/from :chan/name)
+(s/def :pipeline/size int?)
+(s/def :pipeline/xf fn?)
+(s/def :worker/pipeline
+  (s/keys :req [:pipeline/to
+                :pipeline/from
+                :pipeline/size
+                :pipeline/xf]))
+
+(defmethod worker-type :worker.type/pipeline [_]
+  (s/keys :req [:worker/name :worker/pipeline]))
+
+(defmethod compile-worker :worker.type/pipeline
+  [{{to :pipeline/to
+     from :pipeline/from
+     size :pipeline/size
+     xf :pipeline/xf} :worker/pipeline} env]
+  (a/pipeline size (env to) xf (env from)))
+
+(defmethod worker-type :worker.type/pipeline-blocking [_]
+  (s/keys :req [:worker/name :worker/pipeline]))
+
+(defmethod compile-worker :worker.type/pipeline-blocking
+  [{{to :pipeline/to
+     from :pipeline/from
+     size :pipeline/size
+     xf :pipeline/xf} :worker/pipeline} env]
+  (a/pipeline-blocking size (env to) xf (env from)))
+
+(defmethod worker-type :worker.type/pipeline-async [_]
+  (s/keys :req [:worker/name :worker/pipeline]))
+
+(defmethod compile-worker :worker.type/pipeline-async
+  [{{to :pipeline/to
+     from :pipeline/from
+     size :pipeline/size
+     af :pipeline/xf} :worker/pipeline} env]
+  (a/pipeline-async size (env to) af (env from)))
+
+(doseq [t [:worker.type/pipeline :worker.type/pipeline-blocking :worker.type/pipeline-async]]
+  (defmethod ports t
+    [{{to :pipeline/to
+       from :pipeline/from} :worker/pipeline}]
+    #{{:port/name from
+       :port/direction :port.direction/in}
+      {:port/name to
+       :port/direction :port.direction/out}}))
+
+;;; BATCH
+
+(s/def :batch/from :chan/name)
+(s/def :batch/to :chan/name)
+(s/def :batch/size int?)
+(s/def :batch/timeout int?)
+(s/def :batch/rf fn?)
+(s/def :batch/init fn?)
+(s/def :batch/async? boolean?)
+
+(s/def :worker/batch
+  (s/keys :req [:batch/from
+                :batch/to
+                :batch/size
+                :batch/timeout]
+          :opt [:batch/rf
+                :batch/init
+                :batch/async?]))
+
+(defmethod worker-type :worker.type/batch [_]
+  (s/keys :req [:worker/name :worker/batch]))
+
+(defmethod compile-worker :worker.type/batch
+  [{{from :batch/from
+     to :batch/to
+     size :batch/size
+     timeout :batch/timeout
+     rf :batch/rf
+     init :batch/init
+     async? :batch/async?
+     :or {rf conj
+          init (constantly [])}} :worker/batch} env]
+  (let [from (env from)
+        to (env to)]
+    (if async?
+      (ma/batch! from to size timeout rf init)
+      (a/thread (ma/batch!! from to size timeout rf init)))))
+
+(defmethod ports :worker.type/batch
+  [{{to :batch/to
+     from :batch/from} :worker/batch}]
+  #{{:port/name from
+     :port/direction :port.direction/in}
+    {:port/name to
+     :port/direction :port.direction/out}})
+
+;;; MULT
+
+(s/def :mult/from :chan/name)
+(s/def :mult/to (s/* :chan/name))
+
+(s/def :worker/mult
+  (s/keys :req [:mult/from]
+          :opt [:mult/to]))
+
+(defmethod worker-type :worker.type/mult [_]
+  (s/keys :req [:worker/name :worker/mult]))
+
+(defmethod compile-worker :worker.type/mult
+  [{{from :mult/from
+     to :mult/to} :worker/mult} env]
+  (let [mult (a/mult (env from))]
+    (doseq [ch to]
+      (a/tap mult (env ch)))
+    mult))
+
+(defmethod ports :worker.type/mult
+  [{{to :mult/to
+     from :mult/from} :worker/mult}]
+  (into
+   #{{:port/name from
+      :port/direction :port.direction/in}}
+   (map (fn [to] {:port/name to
+                 :port/direction :port.direction/out}))
+   to))
+
+(comment
+  (ports
+   {:worker/type :worker.type/mult
+    :worker/name :cbm
+    :worker/mult {:mult/from   :in
+                  :mult/to     [:cbp-in :user-in]}}))
+
+;;; TODO :worker.type/mix
+
+;;; PUBSUB
+
+(s/def :pubsub/pub :chan/name)
+(s/def :sub/topic any?)
+(s/def :sub/chan :chan/name)
+(s/def :pubsub/sub (s/* (s/keys :req [:sub/topic :sub/chan])))
+(s/def :pubsub/topic-fn fn?)
+
+(s/def :worker/pubsub
+  (s/keys :req [:pubsub/pub :pubsub/topic-fn]
+          :opt [:pubsub/sub ]))
+
+(defmethod worker-type :worker.type/pubsub [_]
+  (s/keys :req [:worker/name :worker/pubsub]))
+
+(defmethod compile-worker :worker.type/pubsub
+  [{{pub :pubsub/pub
+     sub :pubsub/sub
+     tf  :pubsub/topic-fn} :worker/pubsub} env]
+  (let [p (a/pub (env pub) tf)]
+    (doseq [{:keys [:sub/topic :sub/chan]} sub]
+      (a/sub p topic (env chan)))
+    p))
+
+(defmethod ports :worker.type/pubsub
+  [{{to :pubsub/sub
+     from :pubsub/pub} :worker/pubsub}]
+  (into
+   #{{:port/name from
+      :port/direction :port.direction/in}}
+   (map (fn [to] {:port/name to
+                  :port/direction :port.direction/out}))
+   to))
+
+;;; PRODUCER
+
+(s/def :produce/chan :chan/name)
+(s/def :produce/fn fn?)
+(s/def :produce/async? boolean?)
+(s/def :worker/produce (s/keys :req [:produce/chan :produce/fn]
+                               :opt [:produce/async?]))
+
+(defmethod worker-type :worker.type/produce [_]
+  (s/keys :req [:worker/name :worker/produce]))
+
+(defmethod compile-worker :worker.type/produce
+  [{{ch :produce/chan
+     f  :produce/fn
+     async? :produce/async?} :worker/produce} env]
+  (let [ch (env ch)]
+    (if async?
+      (ma/produce-call! ch f)
+      (a/thread (ma/produce-call!! ch f)))))
+
+(defmethod ports :worker.type/produce
+  [{{to :produce/chan} :worker/produce}]
+  #{{:port/name to
+     :port/direction :port.direction/out}})
+
+;;; CONSUMER
+
+(s/def :consume/chan :chan/name)
+(s/def :consume/fn fn?)
+(s/def :consume/checked? boolean?)
+(s/def :consume/async? boolean?)
+(s/def :worker/consume (s/keys :req [:consume/chan :consume/fn]
+                               :opt [:consume/checked? :consume/async?]))
+
+(defmethod worker-type :worker.type/consume [_]
+  (s/keys :req [:worker/name :worker/consume]))
+
+(defmethod compile-worker :worker.type/consume
+  [{{ch :consume/chan
+     f  :consume/fn
+     async? :consume/async?
+     checked? :consume/checked?} :worker/consume} env]
+  (let [ch (env ch)]
+    (if async?
+      ((if checked?
+         ma/consume-checked-call!
+         ma/consume-call!) ch f)
+      (a/thread ((if checked?
+                   ma/consume-checked-call!!
+                   ma/consume-call!!) ch f)))))
+
+(defmethod ports :worker.type/consume
+  [{{from :consume/chan} :worker/consume}]
+  #{{:port/name from
+     :port/direction :port.direction/in}})
+
+;;; SPLIT
+
+(s/def :split/from :chan/name)
+(s/def :split/to (s/map-of any? :chan/name))
+(s/def :split/fn fn?)
+(s/def :split/dropping? boolean?)
+
+(s/def :worker/split (s/keys :req [:split/from :split/to :split/fn]
+                             :opt [:split/dropping?]))
+
+(defmethod worker-type :worker.type/split [_]
+  (s/keys :req [:worker/name :worker/split]))
+
+(defmethod compile-worker :worker.type/split
+  [{{from :split/from
+     to :split/to
+     f :split/fn
+     dropping? :split/dropping?} :worker/split} env]
+  ((if dropping? ma/split?! ma/split!) f (env from) (env to)))
+
+(defmethod ports :worker.type/split
+  [{{to :split/to
+     from :split/from} :worker/split}]
+  (into
+   #{{:port/name from
+      :port/direction :port.direction/in}}
+   (map (fn [to] {:port/name to
+                  :port/direction :port.direction/out}))
+   to))
+
+;;; REDUCTIONS
+
+(s/def :reductions/from :chan/name)
+(s/def :reductions/to :chan/name)
+(s/def :reductions/rf fn?)
+(s/def :reductions/init fn?)
+(s/def :reductions/async? boolean?)
+(s/def :worker/reductions
+  (s/keys :req [:reductions/from
+                :reductions/to
+                :reductions/rf
+                :reductions/init]
+          :opt [:reductions/async?]))
+
+(defmethod worker-type :worker.type/reductions [_]
+  (s/keys :req [:worker/name :worker/type :worker/reductions]))
+
+(defmethod compile-worker :worker.type/reductions
+  [{{from :reductions/from
+     to :reductions/to
+     rf :reductions/rf
+     init :reductions/rf
+     async? :reductions/async?} :worker/reductions} env]
+  (let [from (env from)
+        to (env to)]
+    (if async?
+      (ma/reductions! rf init from to)
+      (a/thread
+        (ma/reductions!! rf init from to)))))
+
+(defmethod ports :worker.type/reductions
+  [{{to :reductions/to
+     from :reductions/from} :worker/reductions}]
+  #{{:port/name from
+     :port/direction :port.direction/in}
+    {:port/name to
+     :port/direction :port.direction/out}})
+
+;;; MODEL
+
+(defn connected?
+  [node chans]
+  (every?
+   #(contains? chans (:port/name %))
+   (ports node)))
+
+(defn connected-model?
+  [{:keys [channels workers]}]
+  (let [chans (into #{} (map :chan/name) channels)]
+    (every? #(connected? % chans) workers)))
+
+(s/def ::connected connected-model?)
+
+(s/def ::worker (s/multi-spec worker-type :worker/type))
+
+(s/def :model/channels (s/+ ::chan))
+(s/def :model/workers (s/+ ::worker))
+
+(s/def ::model (s/keys :req-un [:model/channels :model/workers]))
+
+(s/def ::correct-model (s/and ::connected))
+
+(defn compile-model
+  [{:keys [channels workers]}]
+  (let [chans (reduce
+               (fn [m spec]
+                 (assoc m (:chan/name spec) (compile-chan spec)))
+               {}
+               channels)
+        env (fn [lookup]
+              (if-some [ch (get chans lookup)]
+                ch
+                (throw (ex-info "Channel not found" chans))))
+        workers (reduce
+                 (fn [m spec]
+                   (assoc m (:worker/name spec) (compile-worker spec env)))
+                 {}
+                 workers)]
+    {:chans chans :workers workers}))
+
+(s/fdef compile-model
+  :args (s/cat :model ::model))
+
+(comment
+  (def model
+    {:channels [{:chan/name :in
+                 :chan/type :chan.type/sized
+                 :chan/size 1}
+                {:chan/name :out
+                 :chan/type :chan.type/sized
+                 :chan/size 1}]
+     :workers [{:worker/name :producer
+                :worker/type :worker.type/produce
+                :worker/produce
+                {:produce/chan :in
+                 :produce/async? true
+                 :produce/fn (let [a (atom 0)]
+                               (fn drive []
+                                 (Thread/sleep 1000)
+                                 (swap! a inc)))}}
+               {:worker/name :pipeline
+                :worker/type :worker.type/pipeline-blocking
+                :worker/pipeline
+                {:pipeline/from :in
+                 :pipeline/to :out
+                 :pipeline/size 4
+                 :pipeline/xf (map (fn [x] (println x) (Thread/sleep 2500) x))}}
+               {:worker/name :consumer
+                :worker/type :worker.type/consume
+                :worker/consume
+                {:consume/chan :out
+                 :consume/fn (fn [x] (println :OUT x))
+                 :consume/async? true}}]})
+
+  (s/valid? ::model model)
+  (s/valid? ::connected model)
+  (def system (compile-model model))
+
+  (a/close! (:in (:chans system))))
+
