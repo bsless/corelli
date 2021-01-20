@@ -376,6 +376,9 @@
                  workers)]
     {:chans chans :workers workers}))
 
+(s/fdef compile-model
+  :args (s/cat :model ::model))
+
 (comment
   (def model
     {:channels [{:chan/name :in
@@ -407,7 +410,9 @@
                  :consume/fn (fn [x] (println :OUT x))
                  :consume/async? true}}]})
 
+  (s/valid? ::model model)
   (def system (compile-model model))
+
   (a/close! (:in (:chans system))))
 
 (comment
