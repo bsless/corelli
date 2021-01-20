@@ -102,7 +102,7 @@
 
    - Define correct sequences of edges and nodes (can be verified using spec).
    - Define the required vars.
-   - Try compiling the model using ~compile-topology~.
+   - Try compiling the model using ~compile-model~.
 
 ** Status
    
@@ -110,12 +110,8 @@
 
 ** Roadmap
    
-   - [ ] Rework channel representation
-   - [ ] qualify different specs
-   - [ ] replace ~cond~ with multimethod.
    - [ ] Tests
    - [ ] Analyze the topology to find any dangling channels or disconnected pipes before instancing the pipes.
    - [ ] Implement ~select~ based on ~alt!~ and/or ~alts!~.
    - [ ] Find an idiomatic way to connect a web handler as driver.
-   - [ ] plugin / extension system.
    - [ ] Refine specs, currently have no way to differentiate transducers from regular functions.
