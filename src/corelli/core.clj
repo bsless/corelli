@@ -129,6 +129,8 @@
 
 (defmulti compile-worker (fn [worker _env] (get worker :worker/type)))
 
+(defmulti ports :worker/type)
+
 ;;; PIPELINE
 
 (s/def :pipeline/to :chan/name)
@@ -171,6 +173,15 @@
      af :pipeline/xf} :worker/pipeline} env]
   (a/pipeline-async size (env to) af (env from)))
 
+(doseq [t [:worker.type/pipeline :worker.type/pipeline-blocking :worker.type/pipeline-async]]
+  (defmethod ports t
+    [{{to :pipeline/to
+       from :pipeline/from} :worker/pipeline}]
+    #{{:port/name from
+       :port/direction :port.direction/in}
+      {:port/name to
+       :port/direction :port.direction/out}}))
+
 ;;; BATCH
 
 (s/def :batch/from :chan/name)
@@ -209,6 +220,14 @@
       (ma/batch! from to size timeout rf init)
       (a/thread (ma/batch!! from to size timeout rf init)))))
 
+(defmethod ports :worker.type/batch
+  [{{to :batch/to
+     from :batch/from} :worker/batch}]
+  #{{:port/name from
+     :port/direction :port.direction/in}
+    {:port/name to
+     :port/direction :port.direction/out}})
+
 ;;; MULT
 
 (s/def :mult/from :chan/name)
@@ -227,6 +246,23 @@
     (doseq [ch to]
       (a/tap mult (env ch)))
     mult))
+
+(defmethod ports :worker.type/mult
+  [{{to :mult/to
+     from :mult/from} :worker/mult}]
+  (into
+   #{{:port/name from
+      :port/direction :port.direction/in}}
+   (map (fn [to] {:port/name to
+                 :port/direction :port.direction/out}))
+   to))
+
+(comment
+  (ports
+   {:worker/type :worker.type/mult
+    :worker/name :cbm
+    :worker/mult {:mult/from   :in
+                  :mult/to     [:cbp-in :user-in]}}))
 
 ;;; TODO :worker.type/mix
 
@@ -253,6 +289,16 @@
       (a/sub p topic (env chan)))
     p))
 
+(defmethod ports :worker.type/pubsub
+  [{{to :pubsub/sub
+     from :pubsub/pub} :worker/pubsub}]
+  (into
+   #{{:port/name from
+      :port/direction :port.direction/in}}
+   (map (fn [to] {:port/name to
+                  :port/direction :port.direction/out}))
+   to))
+
 ;;; PRODUCER
 
 (s/def :produce/chan :chan/name)
@@ -272,6 +318,11 @@
     (if async?
       (ma/produce-call! ch f)
       (a/thread (ma/produce-call!! ch f)))))
+
+(defmethod ports :worker.type/produce
+  [{{to :produce/to} :worker/produce}]
+  {:port/name to
+   :port/direction :port.direction/out})
 
 ;;; CONSUMER
 
@@ -299,6 +350,11 @@
                    ma/consume-checked-call!!
                    ma/consume-call!!) ch f)))))
 
+(defmethod ports :worker.type/consume
+  [{{from :consume/from} :worker/consume}]
+  {:port/name from
+   :port/direction :port.direction/in})
+
 ;;; SPLIT
 
 (s/def :split/from :chan/name)
@@ -318,6 +374,16 @@
      f :split/fn
      dropping? :split/dropping?} :worker/split} env]
   ((if dropping? ma/split?! ma/split!) f (env from) (env to)))
+
+(defmethod ports :worker.type/split
+  [{{to :split/to
+     from :split/from} :worker/split}]
+  (into
+   #{{:port/name from
+      :port/direction :port.direction/in}}
+   (map (fn [to] {:port/name to
+                  :port/direction :port.direction/out}))
+   to))
 
 ;;; REDUCTIONS
 
@@ -348,6 +414,14 @@
       (ma/reductions! rf init from to)
       (a/thread
         (ma/reductions!! rf init from to)))))
+
+(defmethod ports :worker.type/reductions
+  [{{to :reductions/to
+     from :reductions/from} :worker/reductions}]
+  #{{:port/name from
+     :port/direction :port.direction/in}
+    {:port/name to
+     :port/direction :port.direction/out}})
 
 ;;; MODEL
 
