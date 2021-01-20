@@ -425,12 +425,27 @@
 
 ;;; MODEL
 
+(defn connected?
+  [node chans]
+  (every?
+   #(contains? chans (:port/name %))
+   (ports node)))
+
+(defn connected-model?
+  [{:keys [channels workers]}]
+  (let [chans (into #{} (map :chan/name) channels)]
+    (every? #(connected? % chans) workers)))
+
+(s/def ::connected connected-model?)
+
 (s/def ::worker (s/multi-spec worker-type :worker/type))
 
 (s/def :model/channels (s/+ ::chan))
 (s/def :model/workers (s/+ ::worker))
 
 (s/def ::model (s/keys :req-un [:model/channels :model/workers]))
+
+(s/def ::correct-model (s/and ::connected))
 
 (defn compile-model
   [{:keys [channels workers]}]
@@ -485,6 +500,7 @@
                  :consume/async? true}}]})
 
   (s/valid? ::model model)
+  (s/valid? ::connected model)
   (def system (compile-model model))
 
   (a/close! (:in (:chans system))))
