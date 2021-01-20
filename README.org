@@ -88,6 +88,16 @@
         (your-chan-fn arg1 arg2))
     #+end_src
 
+*** Workers
+    
+    #+begin_src clojure
+      (defmethod worker-type :worker.type/your-new-type [_] ::spec-for-your-type)
+
+      (defmethod compile-worker :worker.type/your-new-type
+        [{:keys [:worker/arg1 :worker/arg2]}]
+        (your-worker-fn arg1 arg2))
+    #+end_src
+
 ** Usage
 
    - Define correct sequences of edges and nodes (can be verified using spec).
