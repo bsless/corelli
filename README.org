@@ -104,6 +104,46 @@
    - Define the required vars.
    - Try compiling the model using ~compile-model~.
 
+*** Example
+
+    #+begin_src clojure
+      (def model
+          {:channels [{:chan/name :in
+                       :chan/type :chan.type/sized
+                       :chan/size 1}
+                      {:chan/name :out
+                       :chan/type :chan.type/sized
+                       :chan/size 1}]
+           :workers [{:worker/name :producer
+                      :worker/type :worker.type/produce
+                      :worker/produce
+                      {:produce/chan :in
+                       :produce/async? true
+                       :produce/fn (let [a (atom 0)]
+                                     (fn drive []
+                                       (Thread/sleep 1000)
+                                       (swap! a inc)))}}
+                     {:worker/name :pipeline
+                      :worker/type :worker.type/pipeline-blocking
+                      :worker/pipeline
+                      {:pipeline/from :in
+                       :pipeline/to :out
+                       :pipeline/size 4
+                       :pipeline/xf (map (fn [x] (println x) (Thread/sleep 2500) x))}}
+                     {:worker/name :consumer
+                      :worker/type :worker.type/consume
+                      :worker/consume
+                      {:consume/chan :out
+                       :consume/fn (fn [x] (println :OUT x))
+                       :consume/async? true}}]})
+
+        (s/valid? ::model model)
+        (s/valid? ::connected model)
+        (def system (compile-model model))
+
+        (a/close! (:in (:chans system)))
+    #+end_src
+
 ** Status
    
    Highly experimental. Not even tested yet. Don't use it.
