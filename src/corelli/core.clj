@@ -231,10 +231,11 @@
 ;;; MULT
 
 (s/def :mult/from :chan/name)
-(s/def :mult/to (s/+ :chan/name))
+(s/def :mult/to (s/* :chan/name))
 
 (s/def :worker/mult
-  (s/keys :req [:mult/from :mult/to]))
+  (s/keys :req [:mult/from]
+          :opt [:mult/to]))
 
 (defmethod worker-type :worker.type/mult [_]
   (s/keys :req [:worker/name :worker/mult]))
@@ -271,11 +272,12 @@
 (s/def :pubsub/pub :chan/name)
 (s/def :sub/topic any?)
 (s/def :sub/chan :chan/name)
-(s/def :pubsub/sub (s/+ (s/keys :req [:sub/topic :sub/chan])))
+(s/def :pubsub/sub (s/* (s/keys :req [:sub/topic :sub/chan])))
 (s/def :pubsub/topic-fn fn?)
 
 (s/def :worker/pubsub
-  (s/keys :req [:pubsub/pub :pubsub/sub :pubsub/topic-fn]))
+  (s/keys :req [:pubsub/pub :pubsub/topic-fn]
+          :opt [:pubsub/sub ]))
 
 (defmethod worker-type :worker.type/pubsub [_]
   (s/keys :req [:worker/name :worker/pubsub]))
