@@ -320,9 +320,9 @@
       (a/thread (ma/produce-call!! ch f)))))
 
 (defmethod ports :worker.type/produce
-  [{{to :produce/to} :worker/produce}]
-  {:port/name to
-   :port/direction :port.direction/out})
+  [{{to :produce/chan} :worker/produce}]
+  #{{:port/name to
+     :port/direction :port.direction/out}})
 
 ;;; CONSUMER
 
@@ -351,9 +351,9 @@
                    ma/consume-call!!) ch f)))))
 
 (defmethod ports :worker.type/consume
-  [{{from :consume/from} :worker/consume}]
-  {:port/name from
-   :port/direction :port.direction/in})
+  [{{from :consume/chan} :worker/consume}]
+  #{{:port/name from
+     :port/direction :port.direction/in}})
 
 ;;; SPLIT
 
