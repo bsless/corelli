@@ -27,22 +27,16 @@
 
 (s/def ::simple-chan
   (s/keys
-   :req [:chan/name
-         :chan/type]))
+   :req [:chan/name]))
 
 (s/def ::sized-chan
   (s/keys
    :req [:chan/size
-         :chan/name
-         :chan/type]))
+         :chan/name]))
 
 (s/def :buffer/size int?)
-(s/def :buffer/type #{:buffer.type/blocking
-                      :buffer.type/sliding
-                      :buffer.type/dropping})
 
-(s/def ::fixed-buffer (s/keys :req [:buffer/size]
-                              :opt [:buffer/type]))
+(s/def ::fixed-buffer (s/keys :req [:buffer/size]))
 
 (s/def :buffer/fn fn?)
 (s/def :buffer.fn/args (s/* any?))
@@ -75,12 +69,7 @@
 (s/def ::buffered-chan
   (s/keys
    :req [:chan/name
-         :chan/type
          :chan/buffer]))
-
-(s/def :chan/type #{:chan.type/simple
-                    :chan.type/sized
-                    :chan.type/buffered})
 
 (defmulti chan-type :chan/type)
 
@@ -136,20 +125,6 @@
 
 (s/def :worker/name ::name)
 
-(s/def :worker/type #{
-                      :worker.type/pipeline
-                      :worker.type/pipeline-async
-                      :worker.type/pipeline-blocking
-                      :worker.type/mult
-                      #_ :worker.type/mix
-                      :worker.type/pubsub
-                      :worker.type/batch
-                      :worker.type/produce
-                      :worker.type/consume
-                      :worker.type/split
-                      :worker.type/split-dropping
-                      :worker.type/reductions})
-
 (defmulti worker-type :worker/type)
 
 (defmulti compile-worker (fn [worker _env] (get worker :worker/type)))
@@ -167,7 +142,7 @@
                 :pipeline/xf]))
 
 (defmethod worker-type :worker.type/pipeline [_]
-  (s/keys :req [:worker/type :worker/name :worker/pipeline]))
+  (s/keys :req [:worker/name :worker/pipeline]))
 
 (defmethod compile-worker :worker.type/pipeline
   [{{to :pipeline/to
@@ -177,7 +152,7 @@
   (a/pipeline size (env to) xf (env from)))
 
 (defmethod worker-type :worker.type/pipeline-blocking [_]
-  (s/keys :req [:worker/type :worker/name :worker/pipeline]))
+  (s/keys :req [:worker/name :worker/pipeline]))
 
 (defmethod compile-worker :worker.type/pipeline-blocking
   [{{to :pipeline/to
@@ -187,7 +162,7 @@
   (a/pipeline-blocking size (env to) xf (env from)))
 
 (defmethod worker-type :worker.type/pipeline-async [_]
-  (s/keys :req [:worker/type :worker/name :worker/pipeline]))
+  (s/keys :req [:worker/name :worker/pipeline]))
 
 (defmethod compile-worker :worker.type/pipeline-async
   [{{to :pipeline/to
@@ -216,7 +191,7 @@
                 :batch/async?]))
 
 (defmethod worker-type :worker.type/batch [_]
-  (s/keys :req [:worker/type :worker/name :worker/batch]))
+  (s/keys :req [:worker/name :worker/batch]))
 
 (defmethod compile-worker :worker.type/batch
   [{{from :batch/from
@@ -243,7 +218,7 @@
   (s/keys :req [:mult/from :mult/to]))
 
 (defmethod worker-type :worker.type/mult [_]
-  (s/keys :req [:worker/type :worker/name :worker/mult]))
+  (s/keys :req [:worker/name :worker/mult]))
 
 (defmethod compile-worker :worker.type/mult
   [{{from :mult/from
@@ -267,7 +242,7 @@
   (s/keys :req [:pubsub/pub :pubsub/sub :pubsub/topic-fn]))
 
 (defmethod worker-type :worker.type/pubsub [_]
-  (s/keys :req [:worker/type :worker/name :worker/pubsub]))
+  (s/keys :req [:worker/name :worker/pubsub]))
 
 (defmethod compile-worker :worker.type/pubsub
   [{{pub :pubsub/pub
@@ -287,7 +262,7 @@
                                :opt [:produce/async?]))
 
 (defmethod worker-type :worker.type/produce [_]
-  (s/keys :req [:worker/type :worker/name :worker/produce]))
+  (s/keys :req [:worker/name :worker/produce]))
 
 (defmethod compile-worker :worker.type/produce
   [{{ch :produce/chan
@@ -308,7 +283,7 @@
                                :opt [:consume/checked? :consume/async?]))
 
 (defmethod worker-type :worker.type/consume [_]
-  (s/keys :req [:worker/type :worker/name :worker/consume]))
+  (s/keys :req [:worker/name :worker/consume]))
 
 (defmethod compile-worker :worker.type/consume
   [{{ch :consume/chan
@@ -335,7 +310,7 @@
                              :opt [:split/dropping?]))
 
 (defmethod worker-type :worker.type/split [_]
-  (s/keys :req [:worker/type :worker/name :worker/split]))
+  (s/keys :req [:worker/name :worker/split]))
 
 (defmethod compile-worker :worker.type/split
   [{{from :split/from
