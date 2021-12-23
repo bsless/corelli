@@ -1,3 +1,5 @@
+Archived. Please see [[https://github.com/bsless/more.async/blob/master/doc/dataflow.org][more.async.dataflow]]
+
 * Corelli
 
   [[https://en.wikipedia.org/wiki/Arcangelo_Corelli][Arcangelo Corelli]]:
